@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17
+    container_name: finder_postgres
+    restart: always
+    env_file:
+      - .env.docker
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    container_name: finder_migrate
+    env_file:
+      - .env.docker
+    command: npm run migrate:up
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/app/migrations
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finder_app
+    restart: always
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env.docker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
