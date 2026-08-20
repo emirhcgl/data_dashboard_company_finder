@@ -35,6 +35,7 @@ import {
 import { LEADS_BY_DOMAIN_CTE, LEADS_BY_EMAIL_CTE } from "./leads";
 import { EMAILS_BY_DOMAIN_CTE, EMAILS_BY_EMAIL_CTE } from "./emails";
 import { STATE_CODE_EXPR, IS_GERMANY_EXPR, stateName } from "./regions";
+import type { CrmFlagKey } from "./crm-flags";
 
 // --- row shape -------------------------------------------------------------
 
@@ -58,7 +59,7 @@ export type TargetRow = {
   headquarters: string | null;
   state_code: string | null;
   state: string | null;
-  is_in_blacklist: number | null;
+  is_in_blacklist: boolean | null;
 
   // technologies
   tech_url: string | null;
@@ -87,10 +88,10 @@ export type TargetRow = {
   benchmark_home_best_practices_score: number | null;
   benchmark_home_words_total: number | null;
   benchmark_home_modules_count: number | null;
-  benchmark_sitewide_sitewide_has_blog: number | null;
-  benchmark_sitewide_sitewide_has_whitepapers: number | null;
-  benchmark_sitewide_sitewide_has_case_studies: number | null;
-  benchmark_sitewide_sitewide_has_downloads: number | null;
+  benchmark_sitewide_sitewide_has_blog: boolean | null;
+  benchmark_sitewide_sitewide_has_whitepapers: boolean | null;
+  benchmark_sitewide_sitewide_has_case_studies: boolean | null;
+  benchmark_sitewide_sitewide_has_downloads: boolean | null;
   has_benchmark: boolean;
 
   // outreach / contact status
@@ -187,10 +188,10 @@ export const SCORE_COMPONENTS: ScoreComponent[] = [
     label: "Missing content assets",
     weight: 15,
     sql: `CASE WHEN NOT t.has_benchmark THEN 0.5 ELSE (
-      (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_blog, 0) = 0 THEN 1 ELSE 0 END)
-    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_whitepapers, 0) = 0 THEN 1 ELSE 0 END)
-    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_case_studies, 0) = 0 THEN 1 ELSE 0 END)
-    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_downloads, 0) = 0 THEN 1 ELSE 0 END)
+      (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_blog, false) = false THEN 1 ELSE 0 END)
+    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_whitepapers, false) = false THEN 1 ELSE 0 END)
+    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_case_studies, false) = false THEN 1 ELSE 0 END)
+    + (CASE WHEN COALESCE(t.benchmark_sitewide_sitewide_has_downloads, false) = false THEN 1 ELSE 0 END)
     ) / 4.0 END`,
     value: (row) => {
       if (!row.has_benchmark) return 0.5;
@@ -312,8 +313,8 @@ export type TargetFilters = {
   includeBlacklisted: boolean;
   // CRM filters are applied after enrichment, in the route - not in SQL.
   inCrm: TriState;
-  crmStages: string[];
-  crmOwners: string[];
+  /** Only the CRM engagement flags the caller actually asked about. */
+  crmFlags: Partial<Record<CrmFlagKey, boolean>>;
   refreshCrm: boolean;
   sort: TargetSortColumn;
   dir: "asc" | "desc";
@@ -353,9 +354,7 @@ export function isTargetSortColumn(value: string): value is TargetSortColumn {
 
 export function hasCrmFilter(filters: TargetFilters): boolean {
   return (
-    filters.inCrm !== null ||
-    filters.crmStages.length > 0 ||
-    filters.crmOwners.length > 0
+    filters.inCrm !== null || Object.keys(filters.crmFlags).length > 0
   );
 }
 
@@ -384,10 +383,11 @@ WITH company AS (${COMPANY_LATEST_CTE}),
 base AS (
   SELECT
     m."VdmaMemberId" AS vdma_member_id,
-    COALESCE(NULLIF(btrim(c.linkedin_company_name), ''),
+    -- Some source rows carry a leading BOM; strip it so names sort and display cleanly.
+    btrim(COALESCE(NULLIF(btrim(c.linkedin_company_name), ''),
              NULLIF(btrim(m."Title"), ''),
              NULLIF(btrim(c.vdma_name), ''),
-             NULLIF(btrim(m."Name"), '')) AS company_name,
+             NULLIF(btrim(m."Name"), '')), chr(65279) || ' ') AS company_name,
     m."Title"      AS vdma_title,
     c.vdma_name    AS vdma_name,
     COALESCE(NULLIF(btrim(c.website), ''), NULLIF(btrim(m."Website"), '')) AS website,
@@ -403,7 +403,7 @@ base AS (
     c.headquarters AS headquarters,
     ${STATE_CODE_EXPR} AS state_code,
     ${IS_GERMANY_EXPR} AS is_germany,
-    COALESCE(m.is_in_blacklist, 0) AS is_in_blacklist,
+    COALESCE(m.is_in_blacklist, false) AS is_in_blacklist,
     ${EMAIL_KEY}  AS company_email,
     ${DOMAIN_KEY} AS company_domain,
 
@@ -587,7 +587,7 @@ function buildWhere(filters: TargetFilters): FilterBinding {
   }
 
   if (!filters.includeBlacklisted) {
-    where.push(`COALESCE(t.is_in_blacklist, 0) = 0`);
+    where.push(`COALESCE(t.is_in_blacklist, false) = false`);
   }
 
   return {

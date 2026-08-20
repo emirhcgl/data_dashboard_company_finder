@@ -2,7 +2,11 @@
 // every key here is a query-string parameter parseTargetFilters() understands.
 
 import type { TargetRow } from "@/app/models/targets";
-import type { CrmCompany } from "@/app/models/twenty";
+import {
+  CRM_FLAGS,
+  type CrmEnrichment,
+  type CrmFlagKey,
+} from "@/app/models/crm-flags";
 
 export type TriValue = "" | "1" | "0";
 
@@ -30,9 +34,10 @@ export type FilterState = {
   minSeo: string;
   includeBlacklisted: boolean;
   inCrm: TriValue;
-  crmStage: string[];
-  crmOwner: string[];
-};
+} & Record<CrmFlagParam, TriValue>;
+
+/** `crm_is_contacted`, `crm_is_meeting_booked`, ... */
+export type CrmFlagParam = `crm_${CrmFlagKey}`;
 
 export const EMPTY_FILTERS: FilterState = {
   q: "",
@@ -58,8 +63,9 @@ export const EMPTY_FILTERS: FilterState = {
   minSeo: "",
   includeBlacklisted: false,
   inCrm: "",
-  crmStage: [],
-  crmOwner: [],
+  ...(Object.fromEntries(
+    CRM_FLAGS.map((f) => [`crm_${f.key}`, ""]),
+  ) as Record<CrmFlagParam, TriValue>),
 };
 
 export type FilterOptions = {
@@ -69,15 +75,15 @@ export type FilterOptions = {
   sizes: string[];
   states: { code: string; name: string }[];
   crmAvailable: boolean;
-  crmStages: string[];
-  crmOwners: string[];
+  crmFlags: { key: CrmFlagKey; label: string }[];
+  crmCache: { members_cached: number; members_in_crm: number };
   scoreComponents: { key: string; label: string; weight: number }[];
 };
 
 export type ApiTargetRow = TargetRow & {
   crm_available: boolean;
   in_crm: boolean | null;
-  crm: CrmCompany | null;
+  crm: CrmEnrichment | null;
 };
 
 export type TargetsResponse = {

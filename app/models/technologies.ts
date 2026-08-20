@@ -54,12 +54,15 @@ export const TECH_CATEGORY_SELECT = TECH_COLUMNS.map(
 ).join(",\n");
 
 export const TECH_SELECT = `
-  t.id            AS technology_id,
+  t."Id"          AS technology_id,
   t.vdma_member_id AS vdma_member_id,
   t."URL"         AS tech_url,
   t."Status"      AS tech_status,
   t."Message"     AS tech_message,
-  t."Traffic_rank" AS traffic_rank,
+  -- "Traffic_rank" is a text column in the shared DB and sometimes holds a
+  -- scraper error message instead of a rank. Only accept a pure number.
+  CASE WHEN btrim(t."Traffic_rank") ~ '^[0-9]{1,15}$'
+       THEN btrim(t."Traffic_rank")::bigint END AS traffic_rank,
 ${TECH_CATEGORY_SELECT}
 `;
 
@@ -68,7 +71,7 @@ export const TECH_LATEST_CTE = `
   SELECT DISTINCT ON (t.vdma_member_id) ${TECH_SELECT}
     FROM ${TABLE} t
    WHERE t.vdma_member_id IS NOT NULL
-   ORDER BY t.vdma_member_id, t.id DESC
+   ORDER BY t.vdma_member_id, t."Id" DESC
 `;
 
 export function techSummary(
@@ -98,7 +101,7 @@ export async function findByMemberId(id: number): Promise<TechnologyRow | null> 
       `SELECT ${TECH_SELECT}
          FROM ${TABLE} t
         WHERE t.vdma_member_id = @id
-        ORDER BY t.id DESC
+        ORDER BY t."Id" DESC
         LIMIT 1;`,
     );
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { ApiTargetRow } from "./filter-state";
+import { CRM_FLAGS } from "@/app/models/crm-flags";
 
 type Column = {
   key: string;
@@ -170,26 +171,29 @@ const COLUMNS: Column[] = [
       if (!row.in_crm)
         return <span className="text-xs text-zinc-400">not in CRM</span>;
 
+      const top = row.crm?.contacts[0];
+      const engaged = CRM_FLAGS.filter((f) => row.crm?.flags[f.key]);
+
       return (
         <span className="text-xs">
-          {row.crm?.crm_url ? (
+          {top?.crm_url ? (
             <a
-              href={row.crm.crm_url}
+              href={top.crm_url}
               target="_blank"
               rel="noreferrer"
               className="text-blue-600 hover:underline dark:text-blue-400"
             >
-              {row.crm.crm_name ?? "open"}
+              {top.full_name ?? "open"}
             </a>
           ) : (
-            (row.crm?.crm_name ?? "in CRM")
+            (top?.full_name ?? "in CRM")
           )}
 
-          {row.crm?.crm_stage && (
-            <span className="block text-[10px] text-zinc-400">
-              {row.crm.crm_stage}
-            </span>
-          )}
+          <span className="block text-[10px] text-zinc-400">
+            {row.crm?.contact_count ?? 0} contact
+            {(row.crm?.contact_count ?? 0) === 1 ? "" : "s"}
+            {engaged.length ? ` - ${engaged.map((f) => f.label).join(", ")}` : ""}
+          </span>
         </span>
       );
     },

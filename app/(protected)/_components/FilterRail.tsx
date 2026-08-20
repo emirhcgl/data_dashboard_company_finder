@@ -1,6 +1,7 @@
 "use client";
 
 import MultiSelect from "./MultiSelect";
+import { CRM_FLAGS } from "@/app/models/crm-flags";
 import TriStateSelect from "./TriStateSelect";
 import { FilterOptions, FilterState } from "./filter-state";
 
@@ -259,23 +260,21 @@ export default function FilterRail({
               onChange={(inCrm) => onChange({ inCrm })}
             />
 
-            <MultiSelect
-              label="CRM stage (seen in cache)"
-              options={opts(options?.crmStages ?? [])}
-              selected={filters.crmStage}
-              onChange={(crmStage) => onChange({ crmStage })}
-            />
-
-            <MultiSelect
-              label="CRM owner (seen in cache)"
-              options={opts(options?.crmOwners ?? [])}
-              selected={filters.crmOwner}
-              onChange={(crmOwner) => onChange({ crmOwner })}
-            />
+            {CRM_FLAGS.map((flag) => (
+              <TriStateSelect
+                key={flag.key}
+                label={`CRM: ${flag.label}`}
+                value={filters[`crm_${flag.key}`]}
+                onChange={(value) => onChange({ [`crm_${flag.key}`]: value })}
+              />
+            ))}
 
             <p className="text-[11px] leading-snug text-zinc-400">
-              CRM filters are applied after enrichment, on the first 2000
-              matching rows.
+              CRM contacts are matched on the VDMA member id. CRM filters are
+              applied after enrichment, on the first 2000 matching rows.
+              {options?.crmCache
+                ? ` ${options.crmCache.members_in_crm} of ${options.crmCache.members_cached} cached members are in the CRM.`
+                : ""}
             </p>
           </>
         )}

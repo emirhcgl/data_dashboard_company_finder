@@ -196,7 +196,11 @@ export default function TargetsView() {
       </div>
 
       {selected !== null && (
-        <TargetDetail memberId={selected} onClose={() => setSelected(null)} />
+        <TargetDetail
+          key={selected}
+          memberId={selected}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );

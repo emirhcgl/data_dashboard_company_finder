@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { assertRuntimeEnv } from "@/app/lib/env";
 import { describeFilters, parseTargetFilters } from "@/app/lib/target-filters";
 import { applyCrmFilters, enrichRowsWithCrm } from "@/app/lib/crm";
+import { CRM_FLAGS } from "@/app/models/crm-flags";
 import { list } from "@/app/models/targets";
 import { nonEmptyTechCategories } from "@/app/models/technologies";
 
@@ -77,8 +78,14 @@ export async function GET(req: NextRequest) {
       { header: "Last reply at", key: "last_received_at", width: 20 },
       { header: "Outreach match", key: "outreach_match", width: 14 },
       { header: "In CRM", key: "in_crm", width: 9 },
-      { header: "CRM stage", key: "crm_stage", width: 16 },
-      { header: "CRM owner", key: "crm_owner", width: 20 },
+      { header: "CRM contacts", key: "crm_contact_count", width: 13 },
+      ...CRM_FLAGS.map((f) => ({
+        header: `CRM: ${f.label}`,
+        key: `crm_${f.key}`,
+        width: 14,
+      })),
+      { header: "CRM top contact", key: "crm_top_contact", width: 30 },
+      { header: "CRM last update", key: "crm_last_update", width: 20 },
       { header: "CRM link", key: "crm_url", width: 40 },
       { header: "Blacklisted", key: "is_in_blacklist", width: 11 },
     ];
@@ -102,9 +109,17 @@ export async function GET(req: NextRequest) {
           .map((c) => [c.full_name, c.current_title].filter(Boolean).join(" - "))
           .join(" ; "),
         tech_categories: nonEmptyTechCategories(row).join(", "),
-        crm_stage: row.crm?.crm_stage ?? null,
-        crm_owner: row.crm?.crm_owner ?? null,
-        crm_url: row.crm?.crm_url ?? null,
+        crm_contact_count: row.crm?.contact_count ?? null,
+        ...Object.fromEntries(
+          CRM_FLAGS.map((f) => [`crm_${f.key}`, row.crm?.flags[f.key] ?? null]),
+        ),
+        crm_top_contact: row.crm?.contacts[0]
+          ? [row.crm.contacts[0].full_name, row.crm.contacts[0].current_title]
+              .filter(Boolean)
+              .join(" - ")
+          : null,
+        crm_last_update: row.crm?.last_update ?? null,
+        crm_url: row.crm?.contacts[0]?.crm_url ?? null,
       });
     }
 

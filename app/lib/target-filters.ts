@@ -2,6 +2,7 @@
 // /api/targets/export and the UI's link building. Add a filter here and both the
 // table and the export get it.
 
+import { CRM_FLAGS, CrmFlagKey } from "../models/crm-flags";
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_SORT,
@@ -53,6 +54,21 @@ function flag(params: URLSearchParams, name: string): boolean {
   return tri(params, name) === true;
 }
 
+/**
+ * CRM engagement flags. `crm_<key>=1|0` — a key that is absent from the query
+ * string stays absent from the filter, which is different from "must be false".
+ */
+function crmFlags(params: URLSearchParams): Partial<Record<CrmFlagKey, boolean>> {
+  const out: Partial<Record<CrmFlagKey, boolean>> = {};
+
+  for (const flag of CRM_FLAGS) {
+    const value = tri(params, `crm_${flag.key}`);
+    if (value !== null) out[flag.key] = value;
+  }
+
+  return out;
+}
+
 export function parseTargetFilters(params: URLSearchParams): TargetFilters {
   const sortRaw = (params.get("sort") ?? DEFAULT_SORT).trim();
   const sort = isTargetSortColumn(sortRaw) ? sortRaw : DEFAULT_SORT;
@@ -93,8 +109,7 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     minSeo: float(params, "minSeo"),
     includeBlacklisted: flag(params, "includeBlacklisted"),
     inCrm: tri(params, "inCrm"),
-    crmStages: list(params, "crmStage"),
-    crmOwners: list(params, "crmOwner"),
+    crmFlags: crmFlags(params),
     refreshCrm: flag(params, "refreshCrm"),
     sort,
     dir,
@@ -138,8 +153,11 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("Min SEO score", filters.minSeo);
   push("Include blacklisted", filters.includeBlacklisted);
   push("In CRM", filters.inCrm);
-  push("CRM stage", filters.crmStages);
-  push("CRM owner", filters.crmOwners);
+
+  for (const flag of CRM_FLAGS) {
+    const value = filters.crmFlags[flag.key];
+    if (value !== undefined) rows.push([`CRM: ${flag.label}`, String(value)]);
+  }
   push("Sort", `${filters.sort} ${filters.dir}`);
 
   return rows;

@@ -85,6 +85,11 @@ export const env = {
   get TWENTY_API_KEY() {
     return optional("TWENTY_API_KEY");
   },
+  /** Where a human clicks through to a record. Twenty Cloud serves the API on
+   *  api.twenty.com and the UI on app.twenty.com, so default by swapping the host. */
+  get TWENTY_APP_URL() {
+    return optional("TWENTY_APP_URL");
+  },
   get TWENTY_CACHE_TTL_HOURS() {
     return numeric("TWENTY_CACHE_TTL_HOURS", 24);
   },

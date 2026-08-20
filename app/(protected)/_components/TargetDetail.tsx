@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ApiTargetRow } from "./filter-state";
+import { CRM_FLAGS } from "@/app/models/crm-flags";
 
 type DetailPayload = ApiTargetRow & {
   tech_categories: string[];
@@ -49,9 +50,6 @@ export default function TargetDetail({
 
   useEffect(() => {
     let cancelled = false;
-
-    setData(null);
-    setError("");
 
     fetch(`/api/targets/${memberId}`)
       .then(async (res) => {
@@ -213,15 +211,29 @@ export default function TargetDetail({
 
               {data.crm && (
                 <>
-                  <Row label="Name" value={data.crm.crm_name} />
-                  <Row label="Stage" value={data.crm.crm_stage} />
-                  <Row label="Owner" value={data.crm.crm_owner} />
+                  <Row
+                    label="Contacts"
+                    value={String(data.crm.contact_count)}
+                  />
+                  <Row
+                    label="CRM company name"
+                    value={data.crm.vdma_company_name}
+                  />
+                  <Row label="Last update" value={data.crm.last_update} />
+                  <Row
+                    label="Engagement"
+                    value={
+                      CRM_FLAGS.filter((f) => data.crm?.flags[f.key])
+                        .map((f) => f.label)
+                        .join(", ") || "none"
+                    }
+                  />
                   <Row
                     label="Link"
                     value={
-                      data.crm.crm_url ? (
+                      data.crm.contacts[0]?.crm_url ? (
                         <a
-                          href={data.crm.crm_url}
+                          href={data.crm.contacts[0].crm_url!}
                           target="_blank"
                           rel="noreferrer"
                           className="text-blue-600 hover:underline dark:text-blue-400"
@@ -233,6 +245,37 @@ export default function TargetDetail({
                       )
                     }
                   />
+
+                  {data.crm.contacts.length > 0 && (
+                    <ul className="mt-2 space-y-2">
+                      {data.crm.contacts.map((contact) => (
+                        <li
+                          key={contact.crm_id ?? contact.full_name}
+                          className="rounded border border-zinc-200 p-2 text-xs dark:border-zinc-700"
+                        >
+                          <p className="font-medium">
+                            {contact.full_name ?? "(no name)"}
+                          </p>
+
+                          {contact.current_title && (
+                            <p className="text-zinc-500">
+                              {contact.current_title}
+                            </p>
+                          )}
+
+                          {contact.email && (
+                            <p className="text-zinc-500">{contact.email}</p>
+                          )}
+
+                          <p className="mt-1 text-[10px] text-zinc-400">
+                            {CRM_FLAGS.filter((f) => contact[f.key])
+                              .map((f) => f.label)
+                              .join(", ") || "no engagement recorded"}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </>
               )}
             </section>
