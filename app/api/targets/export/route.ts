@@ -10,6 +10,10 @@ import {
   type MemberIdRestriction,
 } from "@/app/models/targets";
 import { nonEmptyTechCategories } from "@/app/models/technologies";
+import {
+  employeesForMembers,
+  type EmployeeExportRow,
+} from "@/app/models/employees";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +57,32 @@ export async function GET(req: NextRequest) {
 
     const rows = enriched.rows;
 
+    // Every scraped employee of the exported companies - not just the top three -
+    // so the "Employees" sheet carries each e-mail address we have.
+    const employees: EmployeeExportRow[] = [];
+
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = await employeesForMembers(
+        rows.slice(i, i + 500).map((r) => r.vdma_member_id),
+      );
+
+      employees.push(...chunk);
+    }
+
+    const companyNames = new Map(
+      rows.map((r) => [r.vdma_member_id, r.company_name]),
+    );
+
+    const emailsByMember = new Map<number, string[]>();
+
+    for (const employee of employees) {
+      if (!employee.email) continue;
+
+      const list = emailsByMember.get(employee.vdma_member_id) ?? [];
+      list.push(employee.email);
+      emailsByMember.set(employee.vdma_member_id, list);
+    }
+
     const wb = new ExcelJS.Workbook();
     wb.creator = "Company Targeting";
     wb.created = new Date();
@@ -78,6 +108,7 @@ export async function GET(req: NextRequest) {
       { header: "Company e-mail", key: "company_email", width: 30 },
       { header: "E-mail source", key: "email_source", width: 14 },
       { header: "Top contacts", key: "top_contacts", width: 60 },
+      { header: "Employee e-mails", key: "employee_emails", width: 50 },
       { header: "Performance", key: "benchmark_home_performance_score", width: 12 },
       { header: "SEO", key: "benchmark_home_seo_score", width: 10 },
       { header: "Accessibility", key: "benchmark_home_accessibility_score", width: 12 },
@@ -134,6 +165,9 @@ export async function GET(req: NextRequest) {
         top_contacts: (row.top_contacts ?? [])
           .map((c) => [c.full_name, c.current_title].filter(Boolean).join(" - "))
           .join(" ; "),
+        employee_emails: (emailsByMember.get(row.vdma_member_id) ?? []).join(
+          "; ",
+        ),
         tech_categories: nonEmptyTechCategories(row).join(", "),
         crm_contact_count: row.crm?.contact_count ?? null,
         ...Object.fromEntries(
@@ -149,6 +183,41 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const empSheet = wb.addWorksheet("Employees");
+
+    empSheet.columns = [
+      { header: "VDMA Member ID", key: "vdma_member_id", width: 14 },
+      { header: "Company", key: "company_name", width: 38 },
+      { header: "Name", key: "full_name", width: 28 },
+      { header: "Title", key: "current_title", width: 38 },
+      { header: "E-mail", key: "email", width: 34 },
+      { header: "Right contact", key: "is_right_contact", width: 13 },
+      { header: "Seniority tier", key: "seniority_tier", width: 13 },
+      { header: "Position since", key: "position_start_year", width: 13 },
+      { header: "Location", key: "location", width: 26 },
+      { header: "Current company (LinkedIn)", key: "current_company", width: 30 },
+      { header: "LinkedIn URL", key: "linkedin_url", width: 44 },
+    ];
+
+    empSheet.getRow(1).font = { bold: true };
+    empSheet.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFEEEEEE" },
+    };
+    empSheet.views = [{ state: "frozen", ySplit: 1 }];
+    empSheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: empSheet.columns.length },
+    };
+
+    for (const employee of employees) {
+      empSheet.addRow({
+        ...employee,
+        company_name: companyNames.get(employee.vdma_member_id) ?? null,
+      });
+    }
+
     const meta = wb.addWorksheet("Filters");
     meta.columns = [
       { header: "Filter", key: "filter", width: 28 },
@@ -157,6 +226,11 @@ export async function GET(req: NextRequest) {
     meta.getRow(1).font = { bold: true };
     meta.addRow({ filter: "Exported at", value: new Date().toISOString() });
     meta.addRow({ filter: "Rows", value: String(rows.length) });
+    meta.addRow({ filter: "Employee rows", value: String(employees.length) });
+    meta.addRow({
+      filter: "Employee rows with e-mail",
+      value: String(employees.filter((e) => e.email).length),
+    });
     meta.addRow({
       filter: "Matching rows (before CRM filter)",
       value: String(result.total),

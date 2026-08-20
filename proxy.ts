@@ -7,11 +7,11 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   if (PUBLIC_PATHS.includes(pathname)) {
-    return NextResponse.next();
+    return;
   }
 
   if (await isApiAuthorized(req)) {
-    return NextResponse.next();
+    return;
   }
 
   return NextResponse.json({ message: "Unauthorized" }, { status: 401 });

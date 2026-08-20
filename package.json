@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "migrate": "node-pg-migrate -d DB_CONNECTION_STRING",
-    "migrate:up": "node-pg-migrate up -d DB_CONNECTION_STRING",
-    "migrate:down": "node-pg-migrate down -d DB_CONNECTION_STRING"
+    "migrate": "node scripts/run-migration.mjs",
+    "migrate:up": "node scripts/run-migration.mjs up -d DB_CONNECTION_STRING",
+    "migrate:down": "node scripts/run-migration.mjs down -d DB_CONNECTION_STRING"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

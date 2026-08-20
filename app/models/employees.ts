@@ -1,3 +1,4 @@
+
 // employee_linkedin_data - READ ONLY (LinkedIn people scraper).
 
 import { getDb, sql } from "../lib/db";
@@ -22,6 +23,20 @@ export type Contact = {
   full_name: string | null;
   current_title: string | null;
   linkedin_url: string | null;
+};
+
+/** One exported employee row: everything the Excel "Employees" sheet needs. */
+export type EmployeeExportRow = {
+  vdma_member_id: number;
+  full_name: string | null;
+  current_title: string | null;
+  email: string | null;
+  is_right_contact: boolean | null;
+  linkedin_url: string | null;
+  location: string | null;
+  current_company: string | null;
+  position_start_year: number | null;
+  seniority_tier: number;
 };
 
 export const EMPLOYEE_SELECT = `
@@ -49,13 +64,48 @@ export const EMPLOYEE_COUNT_CTE = `
    GROUP BY e.vdma_member_id
 `;
 
-// Contact ranking: seniority keywords in currentTitle first (highest tier wins),
-// then the most recent position start year.
+// Contact ranking: seniority keywords in currentTitle first, then recency.
 const SENIORITY_TIERS: { tier: number; keywords: string[] }[] = [
-  { tier: 1, keywords: ["ceo", "geschäftsführ", "geschaeftsfuehr", "founder", "inhaber", "vorstand", "owner", "managing director"] },
-  { tier: 2, keywords: ["cto", "cmo", "cfo", "coo", "chief", "vp ", "vice president", "prokurist"] },
-  { tier: 3, keywords: ["head of", "leiter", "leitung", "director", "direktor"] },
-  { tier: 4, keywords: ["manager", "management", "prozessverantwortlich", "teamlead", "team lead"] },
+  {
+    tier: 1,
+    keywords: [
+      "ceo",
+      "geschäftsführ",
+      "geschaeftsfuehr",
+      "founder",
+      "inhaber",
+      "vorstand",
+      "owner",
+      "managing director",
+    ],
+  },
+  {
+    tier: 2,
+    keywords: [
+      "cto",
+      "cmo",
+      "cfo",
+      "coo",
+      "chief",
+      "vp ",
+      "vice president",
+      "prokurist",
+    ],
+  },
+  {
+    tier: 3,
+    keywords: ["head of", "leiter", "leitung", "director", "direktor"],
+  },
+  {
+    tier: 4,
+    keywords: [
+      "manager",
+      "management",
+      "prozessverantwortlich",
+      "teamlead",
+      "team lead",
+    ],
+  },
   { tier: 5, keywords: ["marketing", "sales", "vertrieb", "digital"] },
 ];
 
@@ -152,6 +202,47 @@ export async function listByMemberId(
         ORDER BY ${SENIORITY_SQL} ASC, e."positionStartYear" DESC NULLS LAST
         LIMIT @limit;`,
     );
+
+  return result.recordset;
+}
+
+/**
+ * EVERY scraped employee of the given members - not just the top contacts - with
+ * the e-mail address when the scraper found one. Used by the export.
+ */
+export async function employeesForMembers(
+  memberIds: number[],
+): Promise<EmployeeExportRow[]> {
+  if (memberIds.length === 0) return [];
+
+  const pool = await getDb();
+  const request = pool.request();
+
+  const placeholders = memberIds
+    .map((id, i) => {
+      request.input(`id${i}`, sql.Int, id);
+      return `@id${i}`;
+    })
+    .join(", ");
+
+  const result = await request.query<EmployeeExportRow>(
+    `SELECT e.vdma_member_id           AS vdma_member_id,
+            e."fullName"               AS full_name,
+            e."currentTitle"           AS current_title,
+            NULLIF(btrim(e.email), '') AS email,
+            e."isRightContact"         AS is_right_contact,
+            e."linkedinUrl"            AS linkedin_url,
+            e."location"               AS location,
+            e."currentCompany"         AS current_company,
+            e."positionStartYear"      AS position_start_year,
+            ${SENIORITY_SQL}           AS seniority_tier
+       FROM ${TABLE} e
+      WHERE e.vdma_member_id IN (${placeholders})
+      ORDER BY e.vdma_member_id,
+               ${SENIORITY_SQL} ASC,
+               e."positionStartYear" DESC NULLS LAST,
+               e."Id" DESC;`,
+  );
 
   return result.recordset;
 }
