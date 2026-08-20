@@ -134,9 +134,15 @@ export default function FilterRail({
         />
 
         <TriStateSelect
-          label="E-mail contact known"
+          label="Company e-mail contact known"
           value={filters.hasEmail}
           onChange={(hasEmail) => onChange({ hasEmail })}
+        />
+
+        <TriStateSelect
+          label="Employee contact known"
+          value={filters.hasEmployeeEmail}
+          onChange={(hasEmployeeEmail) => onChange({ hasEmployeeEmail })}
         />
 
         <TriStateSelect
@@ -270,11 +276,9 @@ export default function FilterRail({
             ))}
 
             <p className="text-[11px] leading-snug text-zinc-400">
-              CRM contacts are matched on the VDMA member id. CRM filters are
-              applied after enrichment, on the first 2000 matching rows.
-              {options?.crmCache
-                ? ` ${options.crmCache.members_in_crm} of ${options.crmCache.members_cached} cached members are in the CRM.`
-                : ""}
+              CRM contacts are matched on the VDMA member id. A CRM filter is
+              resolved against the CRM first and then applied inside the query,
+              so counts are exact — widely used flags take a few seconds longer.
             </p>
           </>
         )}

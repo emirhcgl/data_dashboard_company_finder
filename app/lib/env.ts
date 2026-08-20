@@ -23,20 +23,6 @@ function optional(name: string): string | undefined {
   return value && value.trim() !== "" ? value : undefined;
 }
 
-function numeric(name: string, fallback: number): number {
-  const raw = optional(name);
-
-  if (raw === undefined) return fallback;
-
-  const parsed = Number(raw);
-
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Environment variable ${name} must be a number.`);
-  }
-
-  return parsed;
-}
-
 export const env = {
   // Database
   get DB_CONNECTION_STRING() {
@@ -89,9 +75,6 @@ export const env = {
    *  api.twenty.com and the UI on app.twenty.com, so default by swapping the host. */
   get TWENTY_APP_URL() {
     return optional("TWENTY_APP_URL");
-  },
-  get TWENTY_CACHE_TTL_HOURS() {
-    return numeric("TWENTY_CACHE_TTL_HOURS", 24);
   },
 };
 

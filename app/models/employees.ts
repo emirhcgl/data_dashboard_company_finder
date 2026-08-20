@@ -40,7 +40,10 @@ export const EMPLOYEE_SELECT = `
 // Pre-aggregated employee counts, one row per member (never a correlated subquery).
 export const EMPLOYEE_COUNT_CTE = `
   SELECT e.vdma_member_id AS vdma_member_id,
-         COUNT(*)::int    AS employee_count
+         COUNT(*)::int    AS employee_count,
+         COUNT(*) FILTER (
+           WHERE NULLIF(btrim(e.email), '') IS NOT NULL
+         )::int           AS employee_email_count
     FROM ${TABLE} e
    WHERE e.vdma_member_id IS NOT NULL
    GROUP BY e.vdma_member_id

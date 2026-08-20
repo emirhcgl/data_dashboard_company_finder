@@ -27,7 +27,6 @@ export default function TargetsView() {
   const [dir, setDir] = useState("desc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
 
   const requestId = useRef(0);
@@ -51,22 +50,29 @@ export default function TargetsView() {
       setLoading(true);
 
       fetch(`/api/targets?${query}`)
-        .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+        .then(async (res) => {
+          const body = await res.json().catch(() => null);
+
+          // The route answers 503 with a message when the CRM could not be
+          // queried completely - show it instead of an empty table.
+          if (!res.ok) throw new Error(body?.error ?? "Could not load targets.");
+
+          return body as TargetsResponse;
+        })
         .then((body: TargetsResponse) => {
           if (id !== requestId.current) return;
 
           setRows(body.data);
           setTotal(body.total);
           setError("");
-          setNotice(
-            body.crm_filter_applied_in_memory && body.scan_truncated
-              ? "CRM filter applied to the first 2000 matching rows only - narrow the other filters for exact counts."
-              : "",
-          );
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           if (id !== requestId.current) return;
-          setError("Could not load targets.");
+          setError(
+            err instanceof Error && err.message
+              ? err.message
+              : "Could not load targets.",
+          );
         })
         .finally(() => {
           if (id === requestId.current) setLoading(false);
@@ -130,12 +136,6 @@ export default function TargetsView() {
           {error && (
             <p className="m-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600 dark:bg-red-950/40 dark:text-red-400">
               {error}
-            </p>
-          )}
-
-          {notice && (
-            <p className="m-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-              {notice}
             </p>
           )}
 

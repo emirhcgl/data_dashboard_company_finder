@@ -21,6 +21,7 @@ export type FilterState = {
   industry: string[];
   hasEmployees: TriValue;
   hasEmail: TriValue;
+  hasEmployeeEmail: TriValue;
   contacted: TriValue;
   emailSent: TriValue;
   opened: TriValue;
@@ -50,6 +51,7 @@ export const EMPTY_FILTERS: FilterState = {
   industry: [],
   hasEmployees: "",
   hasEmail: "",
+  hasEmployeeEmail: "",
   contacted: "",
   emailSent: "",
   opened: "",
@@ -76,7 +78,6 @@ export type FilterOptions = {
   states: { code: string; name: string }[];
   crmAvailable: boolean;
   crmFlags: { key: CrmFlagKey; label: string }[];
-  crmCache: { members_cached: number; members_in_crm: number };
   scoreComponents: { key: string; label: string; weight: number }[];
 };
 
@@ -95,8 +96,6 @@ export type TargetsResponse = {
   dir: string;
   crm_available: boolean;
   crm_errors: number;
-  crm_filter_applied_in_memory: boolean;
-  scan_truncated?: boolean;
 };
 
 export function toSearchParams(

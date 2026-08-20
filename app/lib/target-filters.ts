@@ -96,6 +96,7 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     industries: list(params, "industry"),
     hasEmployees: tri(params, "hasEmployees"),
     hasEmail: tri(params, "hasEmail"),
+    hasEmployeeEmail: tri(params, "hasEmployeeEmail"),
     contacted: tri(params, "contacted"),
     emailSent: tri(params, "emailSent"),
     opened: tri(params, "opened"),
@@ -110,7 +111,6 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     includeBlacklisted: flag(params, "includeBlacklisted"),
     inCrm: tri(params, "inCrm"),
     crmFlags: crmFlags(params),
-    refreshCrm: flag(params, "refreshCrm"),
     sort,
     dir,
     page,
@@ -139,7 +139,8 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("City", filters.cities);
   push("Industry", filters.industries);
   push("Has employee data", filters.hasEmployees);
-  push("Has e-mail contact", filters.hasEmail);
+  push("Has company e-mail contact", filters.hasEmail);
+  push("Has employee e-mail contact", filters.hasEmployeeEmail);
   push("Contacted before", filters.contacted);
   push("E-mail sent", filters.emailSent);
   push("Opened", filters.opened);

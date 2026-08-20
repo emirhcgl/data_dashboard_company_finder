@@ -29,10 +29,7 @@ export async function GET(
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const refresh =
-      new URL(req.url).searchParams.get("refreshCrm") === "1";
-
-    const enriched = await enrichRowsWithCrm([target], { refresh });
+    const enriched = await enrichRowsWithCrm([target]);
 
     const emails = target.company_email ? [target.company_email] : [];
 

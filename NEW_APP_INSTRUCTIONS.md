@@ -296,12 +296,20 @@ so the user does not target someone already in flight.
   and show a non-blocking warning in the UI. **Never** fail the whole page because
   the CRM is down.
 - Enrich only the rows being displayed/exported, after filtering and pagination —
-  except when a `crm*` filter is active, in which case enrichment must run before
-  the CRM filter is applied. Document that ordering in the route.
-- **Cache** CRM responses in a new table (additive migration), e.g.
-  `crm_company_cache(domain PK, crm_payload jsonb, fetched_at timestamptz)`, with a
-  TTL (default 24h, env `TWENTY_CACHE_TTL_HOURS`) and a `refresh=1` param to bypass
-  it. This keeps the export path inside the rate limit.
+  one HTTP request per page.
+- **Never apply a `crm*` filter in JavaScript over enriched rows.** A rate-limited
+  (429) batch is indistinguishable from "not in the CRM", so real matches get
+  dropped silently. Instead `lib/crm.ts` `resolveCrmMemberIds` asks Twenty which
+  VDMA member ids match each active CRM filter (one scan per filter) and those ids
+  are pushed into SQL as a `MemberIdRestriction` (`models/targets.ts`), so counts
+  and paging stay exact. A member with no CRM record has every flag false, so
+  `flag=0` means "not among the ids where the flag is true". If any scan comes
+  back incomplete the route answers **503 with a message** — never zero rows.
+- **Do not cache** CRM responses. Every lookup hits Twenty live, so a change made
+  in the CRM is visible on the next page load. A cache table + TTL existed once and
+  was removed deliberately (stale rows hid fresh CRM edits for up to 24h); do not
+  reintroduce one. Keep the export path inside the rate limit with the batching and
+  concurrency caps in `models/twenty.ts` instead.
 - Direction: **read-only from Twenty for v1.** Writing back to the CRM (creating
   companies, logging that we exported a list) is a later phase — design the client
   so a `createCompany` / `updatePerson` can be added, but do not wire any write into
@@ -344,7 +352,6 @@ ADMIN_PASSWORD_HASH=       # bcrypt
 EXTERNAL_API_KEY=
 TWENTY_API_URL=
 TWENTY_API_KEY=
-TWENTY_CACHE_TTL_HOURS=24
 ```
 
 Validate them in `app/lib/env.ts` and fail fast at startup with a clear message.
@@ -404,7 +411,7 @@ same time.
    sorting, pagination.
 8. `/api/targets/export` (`exceljs`) — confirm the exported row count equals the
    page's reported `total` and that column order matches the table.
-9. `models/twenty.ts`: verified schema, rate-limited client, cache table migration,
+9. `models/twenty.ts`: verified schema, rate-limited client (live, uncached),
    merge into `/api/targets`, `crm*` filters, graceful degradation.
 10. `docker compose up` end to end: migrations run, app boots, login works, list
     loads, export downloads.

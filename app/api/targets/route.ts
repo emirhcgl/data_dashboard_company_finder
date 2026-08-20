@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertRuntimeEnv } from "@/app/lib/env";
 import { parseTargetFilters } from "@/app/lib/target-filters";
+import { enrichRowsWithCrm, resolveCrmMemberIds } from "@/app/lib/crm";
 import {
-  CRM_FILTER_SCAN_LIMIT,
-  applyCrmFilters,
-  enrichRowsWithCrm,
-} from "@/app/lib/crm";
-import { hasCrmFilter, list } from "@/app/models/targets";
+  hasCrmFilter,
+  list,
+  type MemberIdRestriction,
+} from "@/app/models/targets";
 
 export const dynamic = "force-dynamic";
 
@@ -17,43 +17,48 @@ export async function GET(req: NextRequest) {
     const filters = parseTargetFilters(new URL(req.url).searchParams);
     const offset = (filters.page - 1) * filters.pageSize;
 
-    // CRM data comes from an HTTP API, so a CRM filter cannot be pushed into SQL:
-    // scan a capped slice, enrich, filter, then paginate in memory.
+    // CRM data comes from an HTTP API, so a CRM filter cannot be expressed in
+    // SQL directly. Ask the CRM which member ids match and push those ids into
+    // the query, so paging and counts stay exact and no row is dropped because a
+    // lookup was rate-limited.
+    let restrict: MemberIdRestriction | undefined;
+
     if (hasCrmFilter(filters)) {
-      const scanned = await list(filters, {
-        limit: CRM_FILTER_SCAN_LIMIT,
-        offset: 0,
-      });
+      const resolved = await resolveCrmMemberIds(filters);
 
-      const enriched = await enrichRowsWithCrm(scanned.rows, {
-        refresh: filters.refreshCrm,
-      });
+      if (!resolved.ok) {
+        return NextResponse.json(
+          {
+            error:
+              "The CRM did not answer completely, so the CRM filter cannot be applied. Try again in a minute.",
+          },
+          { status: 503 },
+        );
+      }
 
-      const filtered = applyCrmFilters(enriched.rows, filters);
+      if (resolved.impossible) {
+        return NextResponse.json({
+          data: [],
+          total: 0,
+          page: filters.page,
+          pageSize: filters.pageSize,
+          sort: filters.sort,
+          dir: filters.dir,
+          crm_available: true,
+          crm_errors: 0,
+        });
+      }
 
-      return NextResponse.json({
-        data: filtered.slice(offset, offset + filters.pageSize),
-        total: filtered.length,
-        page: filters.page,
-        pageSize: filters.pageSize,
-        sort: filters.sort,
-        dir: filters.dir,
-        crm_available: enriched.available,
-        crm_errors: enriched.errors,
-        crm_filter_applied_in_memory: true,
-        scan_limit: CRM_FILTER_SCAN_LIMIT,
-        scan_truncated: scanned.total > CRM_FILTER_SCAN_LIMIT,
-      });
+      restrict = { include: resolved.include, exclude: resolved.exclude };
     }
 
     const result = await list(filters, {
       limit: filters.pageSize,
       offset,
+      restrict,
     });
 
-    const enriched = await enrichRowsWithCrm(result.rows, {
-      refresh: filters.refreshCrm,
-    });
+    const enriched = await enrichRowsWithCrm(result.rows);
 
     return NextResponse.json({
       data: enriched.rows,
@@ -64,7 +69,6 @@ export async function GET(req: NextRequest) {
       dir: filters.dir,
       crm_available: enriched.available,
       crm_errors: enriched.errors,
-      crm_filter_applied_in_memory: false,
     });
   } catch (error) {
     console.error("TARGETS ERROR:", error);

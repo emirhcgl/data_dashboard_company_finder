@@ -1,4 +1,4 @@
-// Twenty CRM lookup + cache. EVERY provider-specific quirk lives in this file.
+// Twenty CRM lookup. EVERY provider-specific quirk lives in this file.
 // The CRM schema this file assumes is documented in docs/TWENTY_SCHEMA.md.
 //
 // Contract with the rest of the app:
@@ -9,9 +9,9 @@
 //  - nothing here ever throws: on a missing config, HTTP error or timeout the
 //    enrichment is simply absent and `available` is false, so the target list
 //    still renders,
-//  - results are cached in `crm_person_cache` for TWENTY_CACHE_TTL_HOURS.
+//  - every lookup hits the CRM live: there is no cache, so the dashboard always
+//    reflects the current state of Twenty.
 
-import { getDb, sql } from "../lib/db";
 import { env, isTwentyConfigured } from "../lib/env";
 import {
   CRM_FLAGS,
@@ -35,72 +35,17 @@ export type CrmLookupResult = {
 };
 
 const REQUEST_TIMEOUT_MS = 12000;
-/** Twenty caps `limit` at 60, and the same cap applies to an `[in]` filter. */
+/** Twenty caps `limit` at 200 (verified against the instance). */
+const RECORDS_PER_PAGE = 200;
+/** Kept well under RECORDS_PER_PAGE so one batch never needs a second page. */
 const IDS_PER_REQUEST = 50;
-const RECORDS_PER_PAGE = 60;
-const CONCURRENCY = 3;
+const CONCURRENCY = 2;
 const MAX_CONTACTS_PER_MEMBER = 5;
 const MAX_PAGES_PER_BATCH = 20;
-
-
-// --- cache -----------------------------------------------------------------
-
-async function readCache(
-  ids: number[],
-  maxAgeHours: number,
-): Promise<Map<number, CrmEnrichment>> {
-  const map = new Map<number, CrmEnrichment>();
-
-  if (ids.length === 0) return map;
-
-  const pool = await getDb();
-  const request = pool.request().input("maxAge", sql.Float, maxAgeHours);
-
-  const placeholders = ids
-    .map((id, i) => {
-      request.input(`m${i}`, sql.Int, id);
-      return `@m${i}`;
-    })
-    .join(", ");
-
-  const result = await request.query<{
-    vdma_member_id: number;
-    crm_payload: CrmEnrichment | null;
-  }>(
-    `SELECT vdma_member_id, crm_payload
-       FROM public.crm_person_cache
-      WHERE vdma_member_id IN (${placeholders})
-        AND fetched_at > now() - (@maxAge || ' hours')::interval;`,
-  );
-
-  for (const row of result.recordset) {
-    if (row.crm_payload) map.set(Number(row.vdma_member_id), row.crm_payload);
-  }
-
-  return map;
-}
-
-async function writeCache(
-  entries: { id: number; payload: CrmEnrichment }[],
-): Promise<void> {
-  if (entries.length === 0) return;
-
-  const pool = await getDb();
-
-  for (const entry of entries) {
-    await pool
-      .request()
-      .input("id", sql.Int, entry.id)
-      .input("payload", sql.NVarChar, JSON.stringify(entry.payload))
-      .query(
-        `INSERT INTO public.crm_person_cache (vdma_member_id, crm_payload, fetched_at)
-         VALUES (@id, @payload::jsonb, now())
-         ON CONFLICT (vdma_member_id) DO UPDATE
-            SET crm_payload = EXCLUDED.crm_payload,
-                fetched_at  = EXCLUDED.fetched_at;`,
-      );
-  }
-}
+/** ~9.3k people at 200/page, plus headroom. */
+const MAX_PAGES_PER_SCAN = 200;
+const MAX_RETRIES = 4;
+const RETRY_BASE_MS = 800;
 
 // --- provider --------------------------------------------------------------
 
@@ -245,24 +190,43 @@ function aggregate(records: TwentyRecord[], baseUrl: string): CrmEnrichment {
   };
 }
 
-/**
- * One request per batch of member ids (Twenty's `[in]` filter), following the
- * cursor while the batch has more pages. Returns null on any failure.
- */
-async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
-  const baseUrl = env.TWENTY_API_URL!.replace(/\/+$/, "");
-  const filter = `vdmamemberid[in]:[${ids.join(",")}]`;
-  const records: TwentyRecord[] = [];
+// --- transport --------------------------------------------------------------
+//
+// Twenty rate-limits (~100 requests/minute). A 429 used to be reported as "no
+// CRM record", which silently turned a throttled member into "flag = false" and
+// dropped it from every CRM-filtered result. So: cap concurrency, and retry a
+// 429/5xx with backoff. A request that still fails returns null, and the caller
+// MUST propagate that as an error rather than as an empty answer.
 
-  let cursor: string | null = null;
+type TwentyBody = {
+  data?: { people?: TwentyRecord[] } | TwentyRecord[];
+  totalCount?: number;
+  pageInfo?: { hasNextPage?: boolean; endCursor?: string };
+};
 
-  for (let page = 0; page < MAX_PAGES_PER_BATCH; page++) {
-    const url =
-      `${baseUrl}/rest/people` +
-      `?filter=${encodeURIComponent(filter)}` +
-      `&limit=${RECORDS_PER_PAGE}&depth=0` +
-      (cursor ? `&starting_after=${encodeURIComponent(cursor)}` : "");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+let active = 0;
+const waiting: (() => void)[] = [];
+
+/** Lets at most CONCURRENCY requests be in flight across the whole process. */
+async function gate<T>(run: () => Promise<T>): Promise<T> {
+  if (active >= CONCURRENCY) {
+    await new Promise<void>((resolve) => waiting.push(resolve));
+  }
+
+  active++;
+
+  try {
+    return await run();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
+}
+
+async function requestJson(url: string): Promise<TwentyBody | null> {
+  for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -276,33 +240,108 @@ async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
         cache: "no-store",
       });
 
+      if (response.status === 429 || response.status >= 500) {
+        if (attempt >= MAX_RETRIES) {
+          console.error(`TWENTY GAVE UP status=${response.status} url=${url}`);
+          return null;
+        }
+
+        const header = Number(response.headers.get("retry-after"));
+        const wait =
+          Number.isFinite(header) && header > 0
+            ? header * 1000
+            : RETRY_BASE_MS * 2 ** attempt;
+
+        await sleep(wait);
+        continue;
+      }
+
       if (!response.ok) {
-        console.error(
-          `TWENTY PEOPLE LOOKUP FAILED ids=${ids.length} status=${response.status}`,
-        );
+        console.error(`TWENTY REQUEST FAILED status=${response.status}`);
         return null;
       }
 
-      const body = (await response.json()) as {
-        data?: { people?: TwentyRecord[] } | TwentyRecord[];
-        pageInfo?: { hasNextPage?: boolean; endCursor?: string };
-      };
-
-      const batch = Array.isArray(body.data)
-        ? body.data
-        : (body.data?.people ?? []);
-
-      records.push(...batch);
-
-      if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
-
-      cursor = body.pageInfo.endCursor;
+      return (await response.json()) as TwentyBody;
     } catch (error) {
-      console.error(`TWENTY PEOPLE LOOKUP ERROR ids=${ids.length}`, error);
-      return null;
+      if (attempt >= MAX_RETRIES) {
+        console.error("TWENTY REQUEST ERROR", error);
+        return null;
+      }
+
+      await sleep(RETRY_BASE_MS * 2 ** attempt);
     } finally {
       clearTimeout(timeout);
     }
+  }
+}
+
+function recordsOf(body: TwentyBody): TwentyRecord[] {
+  return Array.isArray(body.data) ? body.data : (body.data?.people ?? []);
+}
+
+function peopleUrl(filter: string | null, cursor: string | null): string {
+  const baseUrl = env.TWENTY_API_URL!.replace(/\/+$/, "");
+
+  return (
+    `${baseUrl}/rest/people?limit=${RECORDS_PER_PAGE}&depth=0` +
+    (filter ? `&filter=${encodeURIComponent(filter)}` : "") +
+    (cursor ? `&starting_after=${encodeURIComponent(cursor)}` : "")
+  );
+}
+
+/**
+ * Every VDMA member id carried by a person matching `filter` (null = all people).
+ * This is how a CRM filter becomes a SQL `IN (...)`: one small scan here replaces
+ * enriching the whole company table. `ok: false` means the scan was incomplete —
+ * callers must surface that instead of treating the set as authoritative.
+ */
+export async function memberIdsMatching(
+  filter: string | null,
+): Promise<{ ids: Set<number>; ok: boolean }> {
+  const ids = new Set<number>();
+
+  if (!isTwentyConfigured()) return { ids, ok: false };
+
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES_PER_SCAN; page++) {
+    const body = await gate(() => requestJson(peopleUrl(filter, cursor)));
+
+    if (!body) return { ids, ok: false };
+
+    for (const record of recordsOf(body)) {
+      const memberId = Number(asString(record["vdmamemberid"]));
+      if (Number.isInteger(memberId) && memberId > 0) ids.add(memberId);
+    }
+
+    if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
+
+    cursor = body.pageInfo.endCursor;
+  }
+
+  return { ids, ok: true };
+}
+
+/**
+ * One request per batch of member ids (Twenty's `[in]` filter), following the
+ * cursor while the batch has more pages. Returns null on any failure.
+ */
+async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
+  const filter = `vdmamemberid[in]:[${ids.join(",")}]`;
+  const records: TwentyRecord[] = [];
+
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES_PER_BATCH; page++) {
+    const body = await gate(() => requestJson(peopleUrl(filter, cursor)));
+
+    if (!body) return null;
+
+    records.push(...recordsOf(body));
+
+    if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
+
+    cursor = body.pageInfo.endCursor;
   }
 
   return records;
@@ -317,7 +356,6 @@ async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
  */
 export async function lookupByMemberIds(
   rawIds: (number | null | undefined)[],
-  options: { refresh?: boolean } = {},
 ): Promise<CrmLookupResult> {
   const byMemberId = new Map<number, CrmEnrichment>();
 
@@ -337,27 +375,14 @@ export async function lookupByMemberIds(
     return { available: true, byMemberId, errors: 0 };
   }
 
-  let missing = ids;
-
-  if (!options.refresh) {
-    try {
-      const cached = await readCache(ids, env.TWENTY_CACHE_TTL_HOURS);
-      cached.forEach((value, key) => byMemberId.set(key, value));
-      missing = ids.filter((id) => !byMemberId.has(id));
-    } catch (error) {
-      console.error("TWENTY CACHE READ ERROR", error);
-    }
-  }
-
   const baseUrl = recordBaseUrl();
   const batches: number[][] = [];
 
-  for (let i = 0; i < missing.length; i += IDS_PER_REQUEST) {
-    batches.push(missing.slice(i, i + IDS_PER_REQUEST));
+  for (let i = 0; i < ids.length; i += IDS_PER_REQUEST) {
+    batches.push(ids.slice(i, i + IDS_PER_REQUEST));
   }
 
   let errors = 0;
-  const fresh: { id: number; payload: CrmEnrichment }[] = [];
 
   for (let i = 0; i < batches.length; i += CONCURRENCY) {
     const slice = batches.slice(i, i + CONCURRENCY);
@@ -376,7 +401,7 @@ export async function lookupByMemberIds(
       }
 
       // Group the contacts of the batch back onto their member id. Ids that came
-      // back empty are cached too: "not in CRM" is a real, cacheable answer.
+      // back empty are kept too: "not in CRM" is a real answer.
       const grouped = new Map<number, TwentyRecord[]>(batch.map((id) => [id, []]));
 
       for (const record of records) {
@@ -387,51 +412,10 @@ export async function lookupByMemberIds(
       }
 
       for (const [id, group] of grouped) {
-        const payload = aggregate(group, baseUrl);
-        byMemberId.set(id, payload);
-        fresh.push({ id, payload });
+        byMemberId.set(id, aggregate(group, baseUrl));
       }
     }
   }
 
-  try {
-    await writeCache(fresh);
-  } catch (error) {
-    console.error("TWENTY CACHE WRITE ERROR", error);
-  }
-
   return { available: true, byMemberId, errors };
-}
-
-/** How much of the CRM cache is populated — shown next to the CRM filters. */
-export async function cacheStats(): Promise<{
-  members_cached: number;
-  members_in_crm: number;
-}> {
-  if (!isTwentyConfigured()) return { members_cached: 0, members_in_crm: 0 };
-
-  try {
-    const pool = await getDb();
-
-    const result = await pool.request().query<{
-      members_cached: number;
-      members_in_crm: number;
-    }>(
-      `SELECT count(*)::int AS members_cached,
-              count(*) FILTER (
-                WHERE (crm_payload ->> 'in_crm')::boolean
-              )::int AS members_in_crm
-         FROM public.crm_person_cache;`,
-    );
-
-    const row = result.recordset[0];
-
-    return {
-      members_cached: Number(row?.members_cached ?? 0),
-      members_in_crm: Number(row?.members_in_crm ?? 0),
-    };
-  } catch (error) {
-    console.error("TWENTY CACHE STATS ERROR", error);
-    return { members_cached: 0, members_in_crm: 0 };
-  }
 }

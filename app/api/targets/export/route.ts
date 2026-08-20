@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
 import { assertRuntimeEnv } from "@/app/lib/env";
 import { describeFilters, parseTargetFilters } from "@/app/lib/target-filters";
-import { applyCrmFilters, enrichRowsWithCrm } from "@/app/lib/crm";
+import { enrichRowsWithCrm, resolveCrmMemberIds } from "@/app/lib/crm";
 import { CRM_FLAGS } from "@/app/models/crm-flags";
-import { list } from "@/app/models/targets";
+import {
+  hasCrmFilter,
+  list,
+  type MemberIdRestriction,
+} from "@/app/models/targets";
 import { nonEmptyTechCategories } from "@/app/models/technologies";
 
 export const dynamic = "force-dynamic";
@@ -18,14 +22,36 @@ export async function GET(req: NextRequest) {
 
     const filters = parseTargetFilters(new URL(req.url).searchParams);
 
-    // Same filters, same sort, same query as the table - just unpaginated.
-    const result = await list(filters, { limit: EXPORT_LIMIT, offset: 0 });
+    // A CRM filter is resolved to member ids first (see lib/crm.ts) so the
+    // export contains exactly the rows the table shows.
+    let restrict: MemberIdRestriction | undefined;
 
-    const enriched = await enrichRowsWithCrm(result.rows, {
-      refresh: filters.refreshCrm,
+    if (hasCrmFilter(filters)) {
+      const resolved = await resolveCrmMemberIds(filters);
+
+      if (!resolved.ok) {
+        return NextResponse.json(
+          {
+            error:
+              "The CRM did not answer completely, so the CRM filter cannot be applied. Try again in a minute.",
+          },
+          { status: 503 },
+        );
+      }
+
+      restrict = { include: resolved.include, exclude: resolved.exclude };
+    }
+
+    // Same filters, same sort, same query as the table - just unpaginated.
+    const result = await list(filters, {
+      limit: EXPORT_LIMIT,
+      offset: 0,
+      restrict,
     });
 
-    const rows = applyCrmFilters(enriched.rows, filters);
+    const enriched = await enrichRowsWithCrm(result.rows);
+
+    const rows = enriched.rows;
 
     const wb = new ExcelJS.Workbook();
     wb.creator = "Company Targeting";

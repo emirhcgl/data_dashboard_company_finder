@@ -72,6 +72,8 @@ export type TargetRow = {
   employee_count: number;
   has_employee_data: boolean;
   has_email_contact: boolean;
+  employee_email_count: number;
+  has_employee_email_contact: boolean;
   email_source: string | null;
   company_email: string | null;
   company_domain: string | null;
@@ -299,6 +301,7 @@ export type TargetFilters = {
   industries: string[];
   hasEmployees: TriState;
   hasEmail: TriState;
+  hasEmployeeEmail: TriState;
   contacted: TriState;
   emailSent: TriState;
   opened: TriState;
@@ -315,7 +318,6 @@ export type TargetFilters = {
   inCrm: TriState;
   /** Only the CRM engagement flags the caller actually asked about. */
   crmFlags: Partial<Record<CrmFlagKey, boolean>>;
-  refreshCrm: boolean;
   sort: TargetSortColumn;
   dir: "asc" | "desc";
   page: number;
@@ -384,10 +386,10 @@ base AS (
   SELECT
     m."VdmaMemberId" AS vdma_member_id,
     -- Some source rows carry a leading BOM; strip it so names sort and display cleanly.
-    btrim(COALESCE(NULLIF(btrim(c.linkedin_company_name), ''),
+    btrim(COALESCE(NULLIF(btrim(m."Name"), ''),
              NULLIF(btrim(m."Title"), ''),
              NULLIF(btrim(c.vdma_name), ''),
-             NULLIF(btrim(m."Name"), '')), chr(65279) || ' ') AS company_name,
+             NULLIF(btrim(c.linkedin_company_name), '')), chr(65279) || ' ') AS company_name,
     m."Title"      AS vdma_title,
     c.vdma_name    AS vdma_name,
     COALESCE(NULLIF(btrim(c.website), ''), NULLIF(btrim(m."Website"), '')) AS website,
@@ -414,6 +416,7 @@ base AS (
 ${TECH_PASSTHROUGH},
 
     COALESCE(emp.employee_count, 0) AS employee_count,
+    COALESCE(emp.employee_email_count, 0) AS employee_email_count,
 
     b.benchmark_url            AS benchmark_url,
     b.benchmark_product_url    AS benchmark_product_url,
@@ -460,6 +463,7 @@ ${TECH_PASSTHROUGH},
 enriched AS (
   SELECT base.*,
          (base.employee_count > 0) AS has_employee_data,
+         (base.employee_email_count > 0) AS has_employee_email_contact,
          (base.company_email IS NOT NULL OR base.lead_count > 0) AS has_email_contact,
          CASE
            WHEN base.company_email IS NOT NULL AND base.lead_count > 0 THEN 'member+lead'
@@ -481,9 +485,34 @@ enriched AS (
 
 type FilterBinding = { where: string[]; bind: (r: DbRequest) => void };
 
-function buildWhere(filters: TargetFilters): FilterBinding {
+/**
+ * A CRM filter is resolved to member ids by querying the CRM (see lib/crm.ts) and
+ * then pushed into SQL here, so paging and counts stay exact.
+ * `include: null` means "no restriction".
+ */
+export type MemberIdRestriction = {
+  include?: number[] | null;
+  exclude?: number[];
+};
+
+function buildWhere(
+  filters: TargetFilters,
+  restrict?: MemberIdRestriction,
+): FilterBinding {
   const where: string[] = [];
   const binders: ((r: DbRequest) => void)[] = [];
+
+  if (restrict?.include) {
+    const ids = restrict.include;
+    where.push(`t.vdma_member_id = ANY(@crmInclude::int[])`);
+    binders.push((r) => r.input("crmInclude", ids));
+  }
+
+  if (restrict?.exclude?.length) {
+    const ids = restrict.exclude;
+    where.push(`NOT (t.vdma_member_id = ANY(@crmExclude::int[]))`);
+    binders.push((r) => r.input("crmExclude", ids));
+  }
 
   const multi = (
     values: string[],
@@ -566,6 +595,7 @@ function buildWhere(filters: TargetFilters): FilterBinding {
 
   tri(filters.hasEmployees, `t.has_employee_data`);
   tri(filters.hasEmail, `t.has_email_contact`);
+  tri(filters.hasEmployeeEmail, `t.has_employee_email_contact`);
   tri(filters.contacted, `t.contacted_before`);
   tri(filters.emailSent, `t.email_sent`);
   tri(filters.opened, `t.is_email_opened`);
@@ -607,9 +637,13 @@ export type TargetListResult = {
  */
 export async function list(
   filters: TargetFilters,
-  options: { limit?: number | null; offset?: number } = {},
+  options: {
+    limit?: number | null;
+    offset?: number;
+    restrict?: MemberIdRestriction;
+  } = {},
 ): Promise<TargetListResult> {
-  const { where, bind } = buildWhere(filters);
+  const { where, bind } = buildWhere(filters, options.restrict);
   const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
   const sort = isTargetSortColumn(filters.sort) ? filters.sort : DEFAULT_SORT;
@@ -702,6 +736,7 @@ function decorate(row: TargetRow): TargetRow {
     state: stateName(row.state_code),
     tech_summary: techSummary(row),
     employee_count: Number(row.employee_count ?? 0),
+    employee_email_count: Number(row.employee_email_count ?? 0),
     emails_sent: Number(row.emails_sent ?? 0),
     replies: Number(row.replies ?? 0),
     score: Number(row.score ?? 0),
