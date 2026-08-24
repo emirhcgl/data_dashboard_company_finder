@@ -317,6 +317,11 @@ export async function memberIdsMatching(
     if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
 
     cursor = body.pageInfo.endCursor;
+
+    if (page === MAX_PAGES_PER_SCAN - 1) {
+      console.error("TWENTY SCAN INCOMPLETE: page cap reached");
+      return { ids, ok: false };
+    }
   }
 
   return { ids, ok: true };

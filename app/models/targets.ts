@@ -463,11 +463,11 @@ enriched AS (
   SELECT base.*,
          (base.employee_count > 0) AS has_employee_data,
          (base.employee_email_count > 0) AS has_employee_email_contact,
-         (base.company_email IS NOT NULL OR base.lead_count > 0) AS has_email_contact,
+         (base.company_email IS NOT NULL OR base.employee_email_count > 0) AS has_email_contact,
          CASE
-           WHEN base.company_email IS NOT NULL AND base.lead_count > 0 THEN 'member+lead'
+           WHEN base.company_email IS NOT NULL AND base.employee_email_count > 0 THEN 'member+employee'
            WHEN base.company_email IS NOT NULL THEN 'member'
-           WHEN base.lead_count > 0 THEN 'lead'
+           WHEN base.employee_email_count > 0 THEN 'employee'
            ELSE NULL
          END AS email_source,
          (base.lead_count > 0 OR base.emails_sent > 0 OR base.replies > 0) AS contacted_before,
@@ -501,10 +501,14 @@ function buildWhere(
   const where: string[] = [];
   const binders: ((r: DbRequest) => void)[] = [];
 
-  if (restrict?.include) {
+  if (restrict?.include !== undefined && restrict.include !== null) {
     const ids = restrict.include;
-    where.push(`t.vdma_member_id = ANY(@crmInclude::int[])`);
-    binders.push((r) => r.input("crmInclude", ids));
+    if (ids.length === 0) {
+      where.push("false");
+    } else {
+      where.push(`t.vdma_member_id = ANY(@crmInclude::int[])`);
+      binders.push((r) => r.input("crmInclude", ids));
+    }
   }
 
   if (restrict?.exclude?.length) {
