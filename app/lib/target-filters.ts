@@ -95,7 +95,6 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     sizes: list(params, "size"),
     countries: list(params, "country"),
     states: list(params, "state"),
-    cities: list(params, "city"),
     titles: titles.length ? titles : list(params, "industry"),
     hasEmployees: tri(params, "hasEmployees"),
     hasEmail: tri(params, "hasEmail"),
@@ -137,7 +136,6 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("LinkedIn size", filters.sizes);
   push("Country", filters.countries);
   push("State", filters.states);
-  push("City", filters.cities);
   push("Title", filters.titles);
   push("Has employee data", filters.hasEmployees);
   push("Has company e-mail contact", filters.hasEmail);

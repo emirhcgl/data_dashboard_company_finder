@@ -37,7 +37,7 @@ export default function FilterRail({
 
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-          Search (company, website, title, city)
+          Search (company, website, title)
         </span>
 
         <input
@@ -75,13 +75,6 @@ export default function FilterRail({
           }))}
           selected={filters.state}
           onChange={(state) => onChange({ state })}
-        />
-
-        <MultiSelect
-          label="City"
-          options={opts(options?.cities ?? [])}
-          selected={filters.city}
-          onChange={(city) => onChange({ city })}
         />
 
         <MultiSelect

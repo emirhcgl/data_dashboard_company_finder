@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertRuntimeEnv } from "@/app/lib/env";
 import {
-  distinctCities,
   distinctCountries,
   distinctTitles,
 } from "@/app/models/members";
@@ -21,13 +20,11 @@ export async function GET() {
 
     const [
       countries,
-      cities,
       titles,
       leadStatuses,
       replyCategories,
     ] = await Promise.all([
       distinctCountries(),
-      distinctCities(),
       distinctTitles(),
       distinctStatuses(),
       distinctReplyCategories(),
@@ -35,7 +32,6 @@ export async function GET() {
 
     return NextResponse.json({
       countries,
-      cities,
       titles,
       sizes: SIZE_BUCKETS.map((b) => b.value),
       sizeBuckets: SIZE_BUCKETS.map((b) => b.value),

@@ -297,7 +297,6 @@ export type TargetFilters = {
   sizes: string[];
   countries: string[];
   states: string[]; // state codes; "unknown" buckets NULL
-  cities: string[];
   titles: string[];
   hasEmployees: TriState;
   hasEmail: TriState;
@@ -330,7 +329,6 @@ export const TARGET_SORTABLE_COLUMNS = [
   "company_name",
   "vdma_title",
   "industry",
-  "city",
   "state_code",
   "country",
   "company_size_approx",
@@ -537,7 +535,7 @@ function buildWhere(
 
   if (filters.q) {
     where.push(
-      `(t.company_name ILIKE @q OR t.website ILIKE @q OR t.vdma_title ILIKE @q OR t.city ILIKE @q)`,
+      `(t.company_name ILIKE @q OR t.website ILIKE @q OR t.vdma_title ILIKE @q)`,
     );
     binders.push((r) => r.input("q", sql.NVarChar, `%${filters.q}%`));
   }
@@ -558,13 +556,6 @@ function buildWhere(
     filters.countries,
     "country",
     (p) => `lower(btrim(t.country)) IN (${p})`,
-    (v) => v.trim().toLowerCase(),
-  );
-
-  multi(
-    filters.cities,
-    "city",
-    (p) => `lower(btrim(t.city)) IN (${p})`,
     (v) => v.trim().toLowerCase(),
   );
 
