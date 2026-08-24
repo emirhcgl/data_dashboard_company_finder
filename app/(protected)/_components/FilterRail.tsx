@@ -180,6 +180,24 @@ export default function FilterRail({
               onChange={(inCrm) => onChange({ inCrm })}
             />
 
+            <TriStateSelect
+              label="Account owner selected"
+              value={filters.crmOwnerAssigned}
+              onChange={(crmOwnerAssigned) => onChange({ crmOwnerAssigned })}
+            />
+
+            <MultiSelect
+              label="Account owner"
+              options={options?.crmOwners ?? []}
+              selected={filters.crmOwner}
+              onChange={(crmOwner) =>
+                onChange({
+                  crmOwner,
+                  crmOwnerAssigned: crmOwner.length ? "1" : filters.crmOwnerAssigned,
+                })
+              }
+            />
+
             {CRM_FLAGS.map((flag) => (
               <TriStateSelect
                 key={flag.key}

@@ -307,6 +307,8 @@ export type TargetFilters = {
   includeBlacklisted: boolean;
   // CRM filters are applied after enrichment, in the route - not in SQL.
   inCrm: TriState;
+  crmOwnerAssigned: TriState;
+  crmOwners: string[];
   /** Only the CRM engagement flags the caller actually asked about. */
   crmFlags: Partial<Record<CrmFlagKey, boolean>>;
   sort: TargetSortColumn;
@@ -347,7 +349,10 @@ export function isTargetSortColumn(value: string): value is TargetSortColumn {
 
 export function hasCrmFilter(filters: TargetFilters): boolean {
   return (
-    filters.inCrm !== null || Object.keys(filters.crmFlags).length > 0
+    filters.inCrm !== null ||
+    filters.crmOwnerAssigned !== null ||
+    filters.crmOwners.length > 0 ||
+    Object.keys(filters.crmFlags).length > 0
   );
 }
 

@@ -14,7 +14,11 @@
 // so a whole page of the table costs a single HTTP request.
 
 import { TargetRow, TargetFilters } from "../models/targets";
-import { lookupByMemberIds, memberIdsMatching } from "../models/twenty";
+import {
+  lookupByMemberIds,
+  memberIdsMatching,
+  memberIdsMatchingAccountOwner,
+} from "../models/twenty";
 import { isTwentyConfigured } from "./env";
 import { CRM_FLAGS, type CrmEnrichment } from "../models/crm-flags";
 
@@ -72,8 +76,10 @@ export async function resolveCrmMemberIds(
   const activeFlags = CRM_FLAGS.filter(
     (f) => filters.crmFlags[f.key] !== undefined,
   );
+  const hasOwnerFilter =
+    filters.crmOwnerAssigned !== null || filters.crmOwners.length > 0;
 
-  if (filters.inCrm === null && !activeFlags.length) {
+  if (filters.inCrm === null && !activeFlags.length && !hasOwnerFilter) {
     return { include: null, exclude: [], ok: true, impossible: false };
   }
 
@@ -97,6 +103,25 @@ export async function resolveCrmMemberIds(
     else for (const id of result.ids) exclude.add(id);
   };
 
+  const scanOwner = async () => {
+    const result = await memberIdsMatchingAccountOwner({
+      assigned: filters.crmOwnerAssigned,
+      owners: filters.crmOwners,
+    });
+
+    if (!result.ok) {
+      ok = false;
+      return;
+    }
+
+    if (result.impossible) {
+      includeSets.push(new Set<number>());
+      return;
+    }
+
+    includeSets.push(result.ids);
+  };
+
   // Sequential on purpose: models/twenty.ts throttles the requests, and the
   // rare flags resolve in a single page anyway.
   if (filters.inCrm !== null) await scan(null, filters.inCrm);
@@ -104,6 +129,8 @@ export async function resolveCrmMemberIds(
   for (const flag of activeFlags) {
     await scan(`${flag.field}[eq]:true`, filters.crmFlags[flag.key] === true);
   }
+
+  if (hasOwnerFilter) await scanOwner();
 
   if (!ok) return { include: null, exclude: [], ok: false, impossible: false };
 

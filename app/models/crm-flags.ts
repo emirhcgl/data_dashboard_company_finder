@@ -77,3 +77,8 @@ export type CrmEnrichment = {
   last_update: string | null;
   fetched_at: string;
 };
+
+export type CrmAccountOwnerOption = {
+  value: string;
+  label: string;
+};

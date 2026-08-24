@@ -104,6 +104,8 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     minSeo: float(params, "minSeo"),
     includeBlacklisted: flag(params, "includeBlacklisted"),
     inCrm: tri(params, "inCrm"),
+    crmOwnerAssigned: tri(params, "crmOwnerAssigned"),
+    crmOwners: list(params, "crmOwner"),
     crmFlags: crmFlags(params),
     sort,
     dir,
@@ -137,6 +139,8 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("Min SEO score", filters.minSeo);
   push("Include blacklisted", filters.includeBlacklisted);
   push("In CRM", filters.inCrm);
+  push("CRM account owner selected", filters.crmOwnerAssigned);
+  push("CRM account owner", filters.crmOwners);
 
   for (const flag of CRM_FLAGS) {
     const value = filters.crmFlags[flag.key];

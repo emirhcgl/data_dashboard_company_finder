@@ -11,6 +11,7 @@ import { STATES, UNKNOWN_STATE_LABEL } from "@/app/models/regions";
 import { CRM_FLAGS } from "@/app/models/crm-flags";
 import { isTwentyConfigured } from "@/app/lib/env";
 import { SCORE_COMPONENTS, TARGET_SORTABLE_COLUMNS } from "@/app/models/targets";
+import { accountOwnerOptions } from "@/app/models/twenty";
 
 export const dynamic = "force-dynamic";
 
@@ -23,11 +24,13 @@ export async function GET() {
       titles,
       leadStatuses,
       replyCategories,
+      crmOwnerResult,
     ] = await Promise.all([
       distinctCountries(),
       distinctTitles(),
       distinctStatuses(),
       distinctReplyCategories(),
+      accountOwnerOptions(),
     ]);
 
     return NextResponse.json({
@@ -43,6 +46,7 @@ export async function GET() {
       replyCategories,
       crmAvailable: isTwentyConfigured(),
       crmFlags: CRM_FLAGS.map((f) => ({ key: f.key, label: f.label })),
+      crmOwners: crmOwnerResult.options,
       sortable: TARGET_SORTABLE_COLUMNS,
       scoreComponents: SCORE_COMPONENTS.map((c) => ({
         key: c.key,

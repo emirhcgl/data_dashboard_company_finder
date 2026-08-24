@@ -18,6 +18,7 @@ import {
   type CrmContact,
   type CrmEnrichment,
   type CrmFlags,
+  type CrmAccountOwnerOption,
 } from "./crm-flags";
 
 export {
@@ -27,6 +28,7 @@ export {
   type CrmFlags,
   type CrmContact,
   type CrmEnrichment,
+  type CrmAccountOwnerOption,
 } from "./crm-flags";
 export type CrmLookupResult = {
   available: boolean;
@@ -199,7 +201,13 @@ function aggregate(records: TwentyRecord[], baseUrl: string): CrmEnrichment {
 // MUST propagate that as an error rather than as an empty answer.
 
 type TwentyBody = {
-  data?: { people?: TwentyRecord[] } | TwentyRecord[];
+  data?:
+    | {
+        people?: TwentyRecord[];
+        companies?: TwentyRecord[];
+        workspaceMembers?: TwentyRecord[];
+      }
+    | TwentyRecord[];
   totalCount?: number;
   pageInfo?: { hasNextPage?: boolean; endCursor?: string };
 };
@@ -275,18 +283,58 @@ async function requestJson(url: string): Promise<TwentyBody | null> {
   }
 }
 
-function recordsOf(body: TwentyBody): TwentyRecord[] {
-  return Array.isArray(body.data) ? body.data : (body.data?.people ?? []);
+function recordsOf(
+  body: TwentyBody,
+  objectName: "people" | "companies" | "workspaceMembers",
+): TwentyRecord[] {
+  if (Array.isArray(body.data)) return body.data;
+  return body.data?.[objectName] ?? [];
 }
 
-function peopleUrl(filter: string | null, cursor: string | null): string {
+function objectUrl(
+  objectName: "people" | "companies" | "workspaceMembers",
+  filter: string | null,
+  cursor: string | null,
+  depth = 0,
+): string {
   const baseUrl = env.TWENTY_API_URL!.replace(/\/+$/, "");
 
   return (
-    `${baseUrl}/rest/people?limit=${RECORDS_PER_PAGE}&depth=0` +
+    `${baseUrl}/rest/${objectName}?limit=${RECORDS_PER_PAGE}&depth=${depth}` +
     (filter ? `&filter=${encodeURIComponent(filter)}` : "") +
     (cursor ? `&starting_after=${encodeURIComponent(cursor)}` : "")
   );
+}
+
+function peopleUrl(filter: string | null, cursor: string | null): string {
+  return objectUrl("people", filter, cursor);
+}
+
+function companiesUrl(filter: string | null, cursor: string | null): string {
+  return objectUrl("companies", filter, cursor);
+}
+
+function workspaceMembersUrl(cursor: string | null): string {
+  return objectUrl("workspaceMembers", null, cursor);
+}
+
+function accountOwnerId(record: TwentyRecord): string | null {
+  return asString(record["accountOwnerId"]);
+}
+
+function workspaceMemberName(record: TwentyRecord): string | null {
+  return fromComposite(record, "name") ?? asString(record["name"]);
+}
+
+function workspaceMemberOption(record: TwentyRecord): CrmAccountOwnerOption | null {
+  const userId = asString(record["userId"]);
+  const id = asString(record["id"]);
+  const value = [id, userId].filter(Boolean).join("~");
+  const name = workspaceMemberName(record);
+  const email = asString(record["userEmail"]);
+  const label = [name, email].filter(Boolean).join(" - ") || value;
+
+  return value && label ? { value, label } : null;
 }
 
 /**
@@ -309,7 +357,7 @@ export async function memberIdsMatching(
 
     if (!body) return { ids, ok: false };
 
-    for (const record of recordsOf(body)) {
+    for (const record of recordsOf(body, "people")) {
       const memberId = Number(asString(record["vdmamemberid"]));
       if (Number.isInteger(memberId) && memberId > 0) ids.add(memberId);
     }
@@ -342,7 +390,7 @@ async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
 
     if (!body) return null;
 
-    records.push(...recordsOf(body));
+    records.push(...recordsOf(body, "people"));
 
     if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
 
@@ -350,6 +398,95 @@ async function fetchBatch(ids: number[]): Promise<TwentyRecord[] | null> {
   }
 
   return records;
+}
+
+export async function accountOwnerOptions(): Promise<{
+  options: CrmAccountOwnerOption[];
+  ok: boolean;
+}> {
+  const owners = new Map<string, string>();
+
+  if (!isTwentyConfigured()) return { options: [], ok: false };
+
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES_PER_SCAN; page++) {
+    const body = await gate(() => requestJson(workspaceMembersUrl(cursor)));
+
+    if (!body) return { options: [], ok: false };
+
+    for (const record of recordsOf(body, "workspaceMembers")) {
+      const owner = workspaceMemberOption(record);
+      if (owner) owners.set(owner.value, owner.label);
+    }
+
+    if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
+
+    cursor = body.pageInfo.endCursor;
+
+    if (page === MAX_PAGES_PER_SCAN - 1) {
+      console.error("TWENTY WORKSPACE MEMBER SCAN INCOMPLETE: page cap reached");
+      return { options: [], ok: false };
+    }
+  }
+
+  return {
+    options: [...owners.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    ok: true,
+  };
+}
+
+export async function memberIdsMatchingAccountOwner(filters: {
+  assigned: boolean | null;
+  owners: string[];
+}): Promise<{ ids: Set<number>; ok: boolean; impossible: boolean }> {
+  const ids = new Set<number>();
+  const wantedOwners = new Set(
+    filters.owners.flatMap((owner) => owner.split("~")).filter(Boolean),
+  );
+
+  if (filters.assigned === false && wantedOwners.size > 0) {
+    return { ids, ok: true, impossible: true };
+  }
+
+  if (!isTwentyConfigured()) return { ids, ok: false, impossible: false };
+
+  let cursor: string | null = null;
+
+  for (let page = 0; page < MAX_PAGES_PER_SCAN; page++) {
+    const body = await gate(() => requestJson(companiesUrl(null, cursor)));
+
+    if (!body) return { ids, ok: false, impossible: false };
+
+    for (const record of recordsOf(body, "companies")) {
+      const memberId = Number(asString(record["vdmamemberid"]));
+      if (!Number.isInteger(memberId) || memberId <= 0) continue;
+
+      const ownerId = accountOwnerId(record);
+      const hasOwner = ownerId !== null;
+
+      if (filters.assigned === true && !hasOwner) continue;
+      if (filters.assigned === false && hasOwner) continue;
+      if (wantedOwners.size > 0 && (!ownerId || !wantedOwners.has(ownerId))) {
+        continue;
+      }
+
+      ids.add(memberId);
+    }
+
+    if (!body.pageInfo?.hasNextPage || !body.pageInfo.endCursor) break;
+
+    cursor = body.pageInfo.endCursor;
+
+    if (page === MAX_PAGES_PER_SCAN - 1) {
+      console.error("TWENTY COMPANY OWNER FILTER SCAN INCOMPLETE: page cap reached");
+      return { ids, ok: false, impossible: false };
+    }
+  }
+
+  return { ids, ok: true, impossible: false };
 }
 
 // --- public API ------------------------------------------------------------

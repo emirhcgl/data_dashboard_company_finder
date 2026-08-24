@@ -26,6 +26,8 @@ export type FilterState = {
   minSeo: string;
   includeBlacklisted: boolean;
   inCrm: TriValue;
+  crmOwnerAssigned: TriValue;
+  crmOwner: string[];
 } & Record<CrmFlagParam, TriValue>;
 
 /** `crm_is_contacted`, `crm_is_meeting_booked`, ... */
@@ -47,6 +49,8 @@ export const EMPTY_FILTERS: FilterState = {
   minSeo: "",
   includeBlacklisted: false,
   inCrm: "",
+  crmOwnerAssigned: "",
+  crmOwner: [],
   ...(Object.fromEntries(
     CRM_FLAGS.map((f) => [`crm_${f.key}`, ""]),
   ) as Record<CrmFlagParam, TriValue>),
@@ -60,6 +64,7 @@ export type FilterOptions = {
   states: { code: string; name: string }[];
   crmAvailable: boolean;
   crmFlags: { key: CrmFlagKey; label: string }[];
+  crmOwners: { value: string; label: string }[];
   scoreComponents: { key: string; label: string; weight: number }[];
 };
 
