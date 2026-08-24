@@ -58,7 +58,9 @@ function flag(params: URLSearchParams, name: string): boolean {
  * CRM engagement flags. `crm_<key>=1|0` — a key that is absent from the query
  * string stays absent from the filter, which is different from "must be false".
  */
-function crmFlags(params: URLSearchParams): Partial<Record<CrmFlagKey, boolean>> {
+function crmFlags(
+  params: URLSearchParams,
+): Partial<Record<CrmFlagKey, boolean>> {
   const out: Partial<Record<CrmFlagKey, boolean>> = {};
 
   for (const flag of CRM_FLAGS) {
@@ -131,8 +133,6 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   };
 
   push("Search", filters.q);
-  push("Employees min", filters.empMin);
-  push("Employees max", filters.empMax);
   push("LinkedIn size", filters.sizes);
   push("Country", filters.countries);
   push("State", filters.states);

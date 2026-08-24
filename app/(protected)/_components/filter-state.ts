@@ -75,6 +75,7 @@ export type FilterOptions = {
   cities: string[];
   industries: string[];
   sizes: string[];
+  sizeBuckets: string[];
   states: { code: string; name: string }[];
   crmAvailable: boolean;
   crmFlags: { key: CrmFlagKey; label: string }[];

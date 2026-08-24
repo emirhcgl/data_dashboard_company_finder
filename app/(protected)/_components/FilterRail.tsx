@@ -53,39 +53,9 @@ export default function FilterRail({
           Firmographics
         </h3>
 
-        <div className="grid grid-cols-2 gap-2">
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              Employees min
-            </span>
-
-            <input
-              type="number"
-              min={0}
-              value={filters.empMin}
-              onChange={(e) => onChange({ empMin: e.target.value })}
-              className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </label>
-
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-              Employees max
-            </span>
-
-            <input
-              type="number"
-              min={0}
-              value={filters.empMax}
-              onChange={(e) => onChange({ empMax: e.target.value })}
-              className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </label>
-        </div>
-
         <MultiSelect
           label="LinkedIn size bucket"
-          options={opts(options?.sizes ?? [])}
+          options={opts(options?.sizeBuckets ?? [])}
           selected={filters.size}
           onChange={(size) => onChange({ size })}
         />
@@ -241,9 +211,7 @@ export default function FilterRail({
           <input
             type="checkbox"
             checked={filters.includeBlacklisted}
-            onChange={(e) =>
-              onChange({ includeBlacklisted: e.target.checked })
-            }
+            onChange={(e) => onChange({ includeBlacklisted: e.target.checked })}
           />
           Include blacklisted companies
         </label>
@@ -256,7 +224,8 @@ export default function FilterRail({
 
         {options && !options.crmAvailable ? (
           <p className="text-xs text-zinc-400">
-            CRM not configured - set TWENTY_API_URL and TWENTY_API_KEY to enable.
+            CRM not configured - set TWENTY_API_URL and TWENTY_API_KEY to
+            enable.
           </p>
         ) : (
           <>

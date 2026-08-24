@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertRuntimeEnv } from "@/app/lib/env";
 import { distinctCities, distinctCountries } from "@/app/models/members";
-import { distinctIndustries, distinctSizes, SIZE_BUCKETS } from "@/app/models/companies";
+import { distinctIndustries, SIZE_BUCKETS } from "@/app/models/companies";
 import { distinctStatuses } from "@/app/models/leads";
 import { distinctReplyCategories } from "@/app/models/emails";
 import { STATES, UNKNOWN_STATE_LABEL } from "@/app/models/regions";
@@ -19,14 +19,12 @@ export async function GET() {
       countries,
       cities,
       industries,
-      sizes,
       leadStatuses,
       replyCategories,
     ] = await Promise.all([
       distinctCountries(),
       distinctCities(),
       distinctIndustries(),
-      distinctSizes(),
       distinctStatuses(),
       distinctReplyCategories(),
     ]);
@@ -35,7 +33,7 @@ export async function GET() {
       countries,
       cities,
       industries,
-      sizes,
+      sizes: SIZE_BUCKETS.map((b) => b.value),
       sizeBuckets: SIZE_BUCKETS.map((b) => b.value),
       states: [
         ...STATES.map((s) => ({ code: s.code, name: s.name })),
