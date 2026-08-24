@@ -93,6 +93,7 @@ export async function GET(req: NextRequest) {
       { header: "Score", key: "score", width: 8 },
       { header: "VDMA Member ID", key: "vdma_member_id", width: 14 },
       { header: "Company", key: "company_name", width: 38 },
+      { header: "Title", key: "vdma_title", width: 30 },
       { header: "Industry", key: "industry", width: 30 },
       { header: "City", key: "city", width: 20 },
       { header: "Postal code", key: "postal_code", width: 12 },

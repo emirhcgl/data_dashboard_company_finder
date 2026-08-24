@@ -84,6 +84,16 @@ const COLUMNS: Column[] = [
     ),
   },
   {
+    key: "vdma_title",
+    label: "Title",
+    sortable: true,
+    render: (row) => (
+      <span className="block max-w-[12rem] truncate" title={row.vdma_title ?? ""}>
+        {row.vdma_title ?? "-"}
+      </span>
+    ),
+  },
+  {
     key: "industry",
     label: "Industry",
     sortable: true,

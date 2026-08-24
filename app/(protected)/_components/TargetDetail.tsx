@@ -111,6 +111,7 @@ export default function TargetDetail({
               </h3>
 
               <Row label="VDMA member id" value={data.vdma_member_id} />
+              <Row label="Title" value={data.vdma_title} />
               <Row label="Industry" value={data.industry} />
               <Row label="LinkedIn size" value={data.company_size_approx} />
               <Row label="People scraped" value={data.employee_count} />

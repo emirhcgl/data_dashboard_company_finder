@@ -91,3 +91,16 @@ export async function distinctCities(limit = 2000): Promise<string[]> {
 
   return result.recordset.map((r) => r.value);
 }
+
+export async function distinctTitles(): Promise<string[]> {
+  const pool = await getDb();
+
+  const result = await pool.request().query<{ value: string }>(
+    `SELECT DISTINCT btrim(m."Title") AS value
+       FROM ${TABLE} m
+      WHERE m."Title" IS NOT NULL AND btrim(m."Title") <> ''
+      ORDER BY 1;`,
+  );
+
+  return result.recordset.map((r) => r.value);
+}

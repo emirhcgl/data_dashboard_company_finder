@@ -18,7 +18,7 @@ export type FilterState = {
   country: string[];
   state: string[];
   city: string[];
-  industry: string[];
+  title: string[];
   hasEmployees: TriValue;
   hasEmail: TriValue;
   hasEmployeeEmail: TriValue;
@@ -48,7 +48,7 @@ export const EMPTY_FILTERS: FilterState = {
   country: [],
   state: [],
   city: [],
-  industry: [],
+  title: [],
   hasEmployees: "",
   hasEmail: "",
   hasEmployeeEmail: "",
@@ -73,7 +73,7 @@ export const EMPTY_FILTERS: FilterState = {
 export type FilterOptions = {
   countries: string[];
   cities: string[];
-  industries: string[];
+  titles: string[];
   sizes: string[];
   sizeBuckets: string[];
   states: { code: string; name: string }[];

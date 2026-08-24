@@ -74,6 +74,7 @@ function crmFlags(
 export function parseTargetFilters(params: URLSearchParams): TargetFilters {
   const sortRaw = (params.get("sort") ?? DEFAULT_SORT).trim();
   const sort = isTargetSortColumn(sortRaw) ? sortRaw : DEFAULT_SORT;
+  const titles = list(params, "title");
 
   const dir =
     (params.get("dir") ?? (sort === "score" ? "desc" : "asc")).toLowerCase() ===
@@ -95,7 +96,7 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     countries: list(params, "country"),
     states: list(params, "state"),
     cities: list(params, "city"),
-    industries: list(params, "industry"),
+    titles: titles.length ? titles : list(params, "industry"),
     hasEmployees: tri(params, "hasEmployees"),
     hasEmail: tri(params, "hasEmail"),
     hasEmployeeEmail: tri(params, "hasEmployeeEmail"),
@@ -137,7 +138,7 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("Country", filters.countries);
   push("State", filters.states);
   push("City", filters.cities);
-  push("Industry", filters.industries);
+  push("Title", filters.titles);
   push("Has employee data", filters.hasEmployees);
   push("Has company e-mail contact", filters.hasEmail);
   push("Has employee e-mail contact", filters.hasEmployeeEmail);
