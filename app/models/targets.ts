@@ -301,14 +301,6 @@ export type TargetFilters = {
   hasEmployees: TriState;
   hasEmail: TriState;
   hasEmployeeEmail: TriState;
-  contacted: TriState;
-  emailSent: TriState;
-  opened: TriState;
-  clicked: TriState;
-  studyDownloaded: TriState;
-  replied: TriState;
-  hotLead: TriState;
-  unsubscribed: TriState;
   hasBenchmark: TriState;
   minPerf: number | null;
   minSeo: number | null;
@@ -592,14 +584,6 @@ function buildWhere(
   tri(filters.hasEmployees, `t.has_employee_data`);
   tri(filters.hasEmail, `t.has_email_contact`);
   tri(filters.hasEmployeeEmail, `t.has_employee_email_contact`);
-  tri(filters.contacted, `t.contacted_before`);
-  tri(filters.emailSent, `t.email_sent`);
-  tri(filters.opened, `t.is_email_opened`);
-  tri(filters.clicked, `t.is_email_link_clicked`);
-  tri(filters.studyDownloaded, `t.is_study_downloaded`);
-  tri(filters.replied, `t.has_replied`);
-  tri(filters.hotLead, `t.is_hot_lead`);
-  tri(filters.unsubscribed, `t.is_unsubscribed`);
   tri(filters.hasBenchmark, `t.has_benchmark`);
 
   if (filters.minPerf !== null) {

@@ -99,14 +99,6 @@ export function parseTargetFilters(params: URLSearchParams): TargetFilters {
     hasEmployees: tri(params, "hasEmployees"),
     hasEmail: tri(params, "hasEmail"),
     hasEmployeeEmail: tri(params, "hasEmployeeEmail"),
-    contacted: tri(params, "contacted"),
-    emailSent: tri(params, "emailSent"),
-    opened: tri(params, "opened"),
-    clicked: tri(params, "clicked"),
-    studyDownloaded: tri(params, "studyDownloaded"),
-    replied: tri(params, "replied"),
-    hotLead: tri(params, "hotLead"),
-    unsubscribed: tri(params, "unsubscribed"),
     hasBenchmark: tri(params, "hasBenchmark"),
     minPerf: float(params, "minPerf"),
     minSeo: float(params, "minSeo"),
@@ -140,14 +132,6 @@ export function describeFilters(filters: TargetFilters): [string, string][] {
   push("Has employee data", filters.hasEmployees);
   push("Has company e-mail contact", filters.hasEmail);
   push("Has employee e-mail contact", filters.hasEmployeeEmail);
-  push("Contacted before", filters.contacted);
-  push("E-mail sent", filters.emailSent);
-  push("Opened", filters.opened);
-  push("Clicked", filters.clicked);
-  push("Study downloaded", filters.studyDownloaded);
-  push("Replied", filters.replied);
-  push("Hot lead", filters.hotLead);
-  push("Unsubscribed", filters.unsubscribed);
   push("Has benchmark", filters.hasBenchmark);
   push("Min performance score", filters.minPerf);
   push("Min SEO score", filters.minSeo);

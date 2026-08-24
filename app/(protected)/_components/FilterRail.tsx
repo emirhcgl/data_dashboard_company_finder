@@ -149,56 +149,8 @@ export default function FilterRail({
 
       <section className="space-y-3">
         <h3 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">
-          Contact status
+          Safety
         </h3>
-
-        <TriStateSelect
-          label="Contacted before"
-          value={filters.contacted}
-          onChange={(contacted) => onChange({ contacted })}
-        />
-
-        <TriStateSelect
-          label="E-mail sent"
-          value={filters.emailSent}
-          onChange={(emailSent) => onChange({ emailSent })}
-        />
-
-        <TriStateSelect
-          label="Opened"
-          value={filters.opened}
-          onChange={(opened) => onChange({ opened })}
-        />
-
-        <TriStateSelect
-          label="Clicked"
-          value={filters.clicked}
-          onChange={(clicked) => onChange({ clicked })}
-        />
-
-        <TriStateSelect
-          label="Study downloaded"
-          value={filters.studyDownloaded}
-          onChange={(studyDownloaded) => onChange({ studyDownloaded })}
-        />
-
-        <TriStateSelect
-          label="Replied"
-          value={filters.replied}
-          onChange={(replied) => onChange({ replied })}
-        />
-
-        <TriStateSelect
-          label="Hot lead"
-          value={filters.hotLead}
-          onChange={(hotLead) => onChange({ hotLead })}
-        />
-
-        <TriStateSelect
-          label="Unsubscribed"
-          value={filters.unsubscribed}
-          onChange={(unsubscribed) => onChange({ unsubscribed })}
-        />
 
         <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
           <input

@@ -21,14 +21,6 @@ export type FilterState = {
   hasEmployees: TriValue;
   hasEmail: TriValue;
   hasEmployeeEmail: TriValue;
-  contacted: TriValue;
-  emailSent: TriValue;
-  opened: TriValue;
-  clicked: TriValue;
-  studyDownloaded: TriValue;
-  replied: TriValue;
-  hotLead: TriValue;
-  unsubscribed: TriValue;
   hasBenchmark: TriValue;
   minPerf: string;
   minSeo: string;
@@ -50,14 +42,6 @@ export const EMPTY_FILTERS: FilterState = {
   hasEmployees: "",
   hasEmail: "",
   hasEmployeeEmail: "",
-  contacted: "",
-  emailSent: "",
-  opened: "",
-  clicked: "",
-  studyDownloaded: "",
-  replied: "",
-  hotLead: "",
-  unsubscribed: "",
   hasBenchmark: "",
   minPerf: "",
   minSeo: "",
